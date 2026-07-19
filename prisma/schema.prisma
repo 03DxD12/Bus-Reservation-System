@@ -1,0 +1,101 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int       @id @default(autoincrement())
+  username  String    @unique
+  email     String?   @unique
+  phone     String?
+  password  String
+  role      String    @default("PASSENGER")
+  createdAt DateTime  @default(now())
+  bookings  Booking[]
+}
+
+model Terminal {
+  id        Int     @id @default(autoincrement())
+  name      String  @unique
+  city      String
+  routesFrom Route[] @relation("Origin")
+  routesTo   Route[] @relation("Destination")
+}
+
+model Route {
+  id            Int        @id @default(autoincrement())
+  originId      Int
+  destinationId Int
+  price         Float
+  origin        Terminal   @relation("Origin", fields: [originId], references: [id])
+  destination   Terminal   @relation("Destination", fields: [destinationId], references: [id])
+  schedules     Schedule[]
+  trips         Trip[]
+
+  @@unique([originId, destinationId])
+}
+
+model Schedule {
+  id        Int    @id @default(autoincrement())
+  routeId   Int
+  dayOfWeek Int    // 0=Sunday, 1=Monday, etc.
+  time      String // "08:00", "12:00"
+  busType   String // "DELUXE" or "REGULAR"
+  route     Route  @relation(fields: [routeId], references: [id])
+
+  @@unique([routeId, dayOfWeek, time, busType])
+}
+
+model Trip {
+  id             Int       @id @default(autoincrement())
+  routeId        Int
+  departureTime  DateTime
+  arrivalTime    DateTime
+  busType        String    // "DELUXE" or "REGULAR"
+  capacity       Int
+  seatsAvailable Int
+  price          Float
+  status         String    @default("SCHEDULED") // SCHEDULED, COMPLETED, CANCELLED
+  route          Route     @relation(fields: [routeId], references: [id])
+  bookings       Booking[]
+  bookingSeats   BookingSeat[]
+
+  @@unique([routeId, departureTime, busType])
+}
+
+model Booking {
+  id            Int           @id @default(autoincrement())
+  reference     String?       @unique
+  tripId        Int
+  userId        Int?
+  passengerName String
+  contactEmail  String?
+  contactPhone  String?
+  seats         Int
+  totalPrice    Float
+  status        String        @default("CONFIRMED")
+  paymentMethod String        @default("PAY_ON_BOARD")
+  paymentStatus String        @default("PENDING")
+  bookingTime   DateTime      @default(now())
+  cancelledAt   DateTime?
+  ticketQrData  String?       @db.Text
+  trip          Trip          @relation(fields: [tripId], references: [id])
+  user          User?         @relation(fields: [userId], references: [id])
+  bookingSeats  BookingSeat[]
+}
+
+model BookingSeat {
+  id         Int      @id @default(autoincrement())
+  tripId     Int
+  bookingId  Int
+  seatNumber Int
+  createdAt  DateTime @default(now())
+  trip       Trip     @relation(fields: [tripId], references: [id])
+  booking    Booking  @relation(fields: [bookingId], references: [id])
+
+  @@unique([tripId, seatNumber])
+}

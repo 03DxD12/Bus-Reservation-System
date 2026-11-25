@@ -18,7 +18,7 @@
   </head>
   <body>
     <nav class="topbar">
-      <a class="brand" href="index.html"><i class="ri-bus-wifi-fill"></i> Voyage</a>
+      <a class="brand" href="index.html"><i class="ri-bus-wifi-fill" aria-hidden="true"></i> Voyage</a>
       <div class="nav-links">
         <a class="active" href="index.html">Book</a>
         <a href="#lookup-panel">My Booking</a>
@@ -42,27 +42,34 @@
 
         <form id="search-form" class="search-panel">
           <label>
-            <span><i class="ri-map-pin-user-fill"></i> From</span>
+            <span><i class="ri-map-pin-user-fill" aria-hidden="true"></i> From</span>
             <select id="origin" required>
               <option value="" disabled selected>Select origin</option>
             </select>
           </label>
-          <button class="swap-btn" type="button" id="swap-route" title="Swap route">
-            <i class="ri-arrow-left-right-line"></i>
+          <button
+            class="swap-btn"
+            type="button"
+            id="swap-route"
+            title="Swap route"
+            aria-label="Swap origin and destination"
+          >
+            <i class="ri-arrow-left-right-line" aria-hidden="true"></i>
           </button>
           <label>
-            <span><i class="ri-map-pin-2-fill"></i> To</span>
+            <span><i class="ri-map-pin-2-fill" aria-hidden="true"></i> To</span>
             <select id="destination" required>
               <option value="" disabled selected>Select destination</option>
             </select>
           </label>
           <label>
-            <span><i class="ri-calendar-event-fill"></i> Date</span>
+            <span><i class="ri-calendar-event-fill" aria-hidden="true"></i> Date</span>
             <input type="date" id="date" required />
           </label>
           <button type="submit" class="btn primary">
-            <i class="ri-search-line"></i> Find Trips
+            <i class="ri-search-line" aria-hidden="true"></i> Find Trips
           </button>
+          <p id="search-feedback" class="message form-feedback hidden" role="alert" aria-live="polite"></p>
         </form>
       </section>
 
@@ -72,7 +79,7 @@
             <p class="eyebrow">Available departures</p>
             <h2>Choose a trip</h2>
           </div>
-          <p id="result-count" class="muted"></p>
+          <p id="result-count" class="muted" aria-live="polite"></p>
         </div>
         <div id="results-container" class="trip-grid"></div>
       </section>
@@ -87,21 +94,27 @@
           </p>
         </div>
         <form id="lookup-form" class="lookup-card">
-          <input id="lookup-reference" placeholder="Booking reference" required />
-          <input id="lookup-contact" placeholder="Email or phone" required />
+          <input id="lookup-reference" placeholder="Booking reference" aria-label="Booking reference" required />
+          <input id="lookup-contact" placeholder="Email or phone" aria-label="Email or phone" required />
           <button type="submit" class="btn secondary">
-            <i class="ri-ticket-2-line"></i> Find Booking
+            <i class="ri-ticket-2-line" aria-hidden="true"></i> Find Booking
           </button>
         </form>
       </section>
 
-      <section id="lookup-result" class="section hidden"></section>
+      <section id="lookup-result" class="section hidden" aria-live="polite"></section>
     </main>
 
-    <div id="booking-modal" class="modal hidden">
+    <div
+      id="booking-modal"
+      class="modal hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-route"
+    >
       <div class="modal-content">
-        <button class="icon-btn close-modal" type="button" title="Close">
-          <i class="ri-close-line"></i>
+        <button class="icon-btn close-modal" type="button" title="Close" aria-label="Close modal">
+          <i class="ri-close-line" aria-hidden="true"></i>
         </button>
         <div class="modal-header">
           <p class="eyebrow">Confirm reservation</p>
@@ -146,8 +159,10 @@
             <strong id="modal-total">₱0.00</strong>
           </div>
 
+          <p id="modal-feedback" class="message form-feedback hidden" role="alert" aria-live="polite"></p>
+
           <button type="submit" class="btn primary full">
-            <i class="ri-checkbox-circle-line"></i> Confirm Reservation
+            <i class="ri-checkbox-circle-line" aria-hidden="true"></i> Confirm Reservation
           </button>
         </form>
       </div>

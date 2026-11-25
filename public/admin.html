@@ -18,11 +18,11 @@
   </head>
   <body class="admin-body">
     <aside class="sidebar">
-      <a class="brand" href="admin.html"><i class="ri-bus-wifi-fill"></i> Voyage Admin</a>
-      <nav>
-        <a class="active" href="#"><i class="ri-dashboard-line"></i> Dashboard</a>
-        <a href="index.html"><i class="ri-home-4-line"></i> Passenger Site</a>
-        <button id="logout-btn" type="button"><i class="ri-logout-box-line"></i> Logout</button>
+      <a class="brand" href="admin.html"><i class="ri-bus-wifi-fill" aria-hidden="true"></i> Voyage Admin</a>
+      <nav aria-label="Admin navigation">
+        <a class="active" href="#"><i class="ri-dashboard-line" aria-hidden="true"></i> Dashboard</a>
+        <a href="index.html"><i class="ri-home-4-line" aria-hidden="true"></i> Passenger Site</a>
+        <button id="logout-btn" type="button"><i class="ri-logout-box-line" aria-hidden="true"></i> Logout</button>
       </nav>
     </aside>
 
@@ -33,7 +33,7 @@
           <h1>Dashboard</h1>
         </div>
         <button id="refresh-btn" class="btn secondary" type="button">
-          <i class="ri-refresh-line"></i> Refresh
+          <i class="ri-refresh-line" aria-hidden="true"></i> Refresh
         </button>
       </header>
 
@@ -61,14 +61,14 @@
             </div>
           </div>
           <form id="filter-form" class="filter-row">
-            <input id="search" placeholder="Search reference, passenger, contact" />
-            <select id="status">
+            <input id="search" placeholder="Search reference, passenger, contact" aria-label="Search reference, passenger, or contact" />
+            <select id="status" aria-label="Filter by status">
               <option value="">All statuses</option>
               <option value="CONFIRMED">Confirmed</option>
               <option value="CANCELLED">Cancelled</option>
             </select>
-            <input id="from" type="date" />
-            <input id="to" type="date" />
+            <input id="from" type="date" aria-label="From date" />
+            <input id="to" type="date" aria-label="To date" />
             <button class="btn secondary" type="submit">Apply</button>
           </form>
           <div class="table-wrap">
@@ -133,51 +133,61 @@
           const value = document.getElementById(id).value;
           if (value) params.set(id, value);
         }
-        const res = await fetch(`/api/bookings?${params}`);
-        if (res.status === 403 || res.status === 401) {
-          location.href = "login.html?admin=1";
-          return;
+        try {
+          const res = await fetch(`/api/bookings?${params}`);
+          if (res.status === 403 || res.status === 401) {
+            location.href = "login.html?admin=1";
+            return;
+          }
+          const bookings = await res.json();
+          if (!res.ok) throw new Error(bookings.error || "Unable to load bookings");
+          if (!bookings.length) {
+            table.innerHTML = '<tr><td colspan="6">No reservations found.</td></tr>';
+            return;
+          }
+          table.innerHTML = bookings
+            .map(
+              (booking) => `
+                <tr>
+                  <td>${escapeHtml(booking.reference)}</td>
+                  <td>${escapeHtml(booking.passengerName)}</td>
+                  <td>${escapeHtml(booking.tripDetails.route)}<br><small>${escapeHtml(booking.tripDetails.date)} ${escapeHtml(booking.tripDetails.time)}</small></td>
+                  <td>${escapeHtml(booking.seatNumbers.join(", "))}</td>
+                  <td>${formatCurrency(booking.totalPrice)}</td>
+                  <td><span class="status ${escapeHtml(booking.status.toLowerCase())}">${escapeHtml(booking.status)}</span></td>
+                </tr>
+              `
+            )
+            .join("");
+        } catch (error) {
+          table.innerHTML = `<tr><td colspan="6">${escapeHtml(error.message)}</td></tr>`;
         }
-        const bookings = await res.json();
-        if (!bookings.length) {
-          table.innerHTML = '<tr><td colspan="6">No reservations found.</td></tr>';
-          return;
-        }
-        table.innerHTML = bookings
-          .map(
-            (booking) => `
-              <tr>
-                <td>${booking.reference}</td>
-                <td>${escapeHtml(booking.passengerName)}</td>
-                <td>${booking.tripDetails.route}<br><small>${booking.tripDetails.date} ${booking.tripDetails.time}</small></td>
-                <td>${booking.seatNumbers.join(", ")}</td>
-                <td>${formatCurrency(booking.totalPrice)}</td>
-                <td><span class="status ${booking.status.toLowerCase()}">${booking.status}</span></td>
-              </tr>
-            `
-          )
-          .join("");
       }
 
       async function loadStats() {
-        const res = await fetch("/api/admin/stats");
-        const stats = await res.json();
-        document.getElementById("stat-bookings").textContent = stats.totalBookings || 0;
-        document.getElementById("stat-trips").textContent = stats.activeTrips || 0;
-        document.getElementById("stat-revenue").textContent = formatCurrency(stats.revenue || 0);
-        document.getElementById("route-breakdown").innerHTML = (stats.byRoute || [])
-          .map(
-            (route) => `
-              <div class="route-row">
-                <div>
-                  <strong>${route.route}</strong>
-                  <span>${route.bookings} booking${route.bookings === 1 ? "" : "s"}</span>
+        try {
+          const res = await fetch("/api/admin/stats");
+          const stats = await res.json();
+          if (!res.ok) throw new Error(stats.error || "Unable to load stats");
+          document.getElementById("stat-bookings").textContent = stats.totalBookings || 0;
+          document.getElementById("stat-trips").textContent = stats.activeTrips || 0;
+          document.getElementById("stat-revenue").textContent = formatCurrency(stats.revenue || 0);
+          document.getElementById("route-breakdown").innerHTML = (stats.byRoute || [])
+            .map(
+              (route) => `
+                <div class="route-row">
+                  <div>
+                    <strong>${escapeHtml(route.route)}</strong>
+                    <span>${route.bookings} booking${route.bookings === 1 ? "" : "s"}</span>
+                  </div>
+                  <strong>${formatCurrency(route.revenue)}</strong>
                 </div>
-                <strong>${formatCurrency(route.revenue)}</strong>
-              </div>
-            `
-          )
-          .join("") || '<div class="notice">No revenue yet.</div>';
+              `
+            )
+            .join("") || '<div class="notice">No revenue yet.</div>';
+        } catch (error) {
+          document.getElementById("route-breakdown").innerHTML = `<div class="notice">${escapeHtml(error.message)}</div>`;
+        }
       }
 
       function formatCurrency(value) {

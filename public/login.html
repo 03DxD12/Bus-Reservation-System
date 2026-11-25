@@ -18,7 +18,7 @@
   </head>
   <body class="auth-page">
     <main class="auth-shell">
-      <a class="brand" href="index.html"><i class="ri-bus-wifi-fill"></i> Voyage</a>
+      <a class="brand" href="index.html"><i class="ri-bus-wifi-fill" aria-hidden="true"></i> Voyage</a>
       <section class="auth-card">
         <div>
           <p class="eyebrow">Account access</p>
@@ -26,26 +26,26 @@
           <p class="muted">Use admin / adminpassword for the seeded admin account.</p>
         </div>
 
-        <div class="tabs">
-          <button class="tab active" id="login-tab" type="button">Login</button>
-          <button class="tab" id="signup-tab" type="button">Sign up</button>
+        <div class="tabs" role="tablist" aria-label="Authentication mode">
+          <button class="tab active" id="login-tab" type="button" role="tab" aria-selected="true">Login</button>
+          <button class="tab" id="signup-tab" type="button" role="tab" aria-selected="false">Sign up</button>
         </div>
 
         <form id="login-form" class="auth-form">
-          <input id="login-username" placeholder="Username" required />
-          <input id="login-password" type="password" placeholder="Password" required />
+          <input id="login-username" placeholder="Username" aria-label="Username" required />
+          <input id="login-password" type="password" placeholder="Password" aria-label="Password" required />
           <button class="btn primary full" type="submit">Login</button>
         </form>
 
         <form id="signup-form" class="auth-form hidden">
-          <input id="signup-username" placeholder="Username" required />
-          <input id="signup-email" type="email" placeholder="Email" />
-          <input id="signup-phone" placeholder="Phone" />
-          <input id="signup-password" type="password" placeholder="Password" required />
+          <input id="signup-username" placeholder="Username" aria-label="Username" required />
+          <input id="signup-email" type="email" placeholder="Email" aria-label="Email" />
+          <input id="signup-phone" placeholder="Phone" aria-label="Phone" />
+          <input id="signup-password" type="password" placeholder="Password" aria-label="Password" required />
           <button class="btn primary full" type="submit">Create Account</button>
         </form>
 
-        <p id="auth-message" class="message"></p>
+        <p id="auth-message" class="message" role="status" aria-live="polite"></p>
       </section>
     </main>
 
@@ -62,6 +62,8 @@
         loginForm.classList.toggle("hidden", signup);
         signupTab.classList.toggle("active", signup);
         loginTab.classList.toggle("active", !signup);
+        signupTab.setAttribute("aria-selected", String(signup));
+        loginTab.setAttribute("aria-selected", String(!signup));
         message.textContent = "";
       }
 

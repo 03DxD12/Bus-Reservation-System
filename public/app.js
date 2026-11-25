@@ -12,10 +12,13 @@ document.addEventListener("DOMContentLoaded", () => {
   const modalTotal = document.getElementById("modal-total");
   const selectedSeatLabel = document.getElementById("selected-seat-label");
   const lookupResult = document.getElementById("lookup-result");
+  const searchFeedback = document.getElementById("search-feedback");
+  const modalFeedback = document.getElementById("modal-feedback");
 
   let currentTrip = null;
   let selectedSeats = [];
   let currentUser = null;
+  let lastTriggerButton = null;
 
   init();
 
@@ -49,12 +52,15 @@ document.addEventListener("DOMContentLoaded", () => {
       const res = await fetch("/api/terminals");
       const terminals = await res.json();
       const options = terminals
-        .map((terminal) => `<option value="${terminal.id}">${terminal.name} (${terminal.city})</option>`)
+        .map(
+          (terminal) =>
+            `<option value="${escapeHtml(terminal.id)}">${escapeHtml(terminal.name)} (${escapeHtml(terminal.city)})</option>`
+        )
         .join("");
       originSelect.insertAdjacentHTML("beforeend", options);
       destinationSelect.insertAdjacentHTML("beforeend", options);
     } catch (error) {
-      showInline(resultsContainer, "Failed to load terminals.");
+      setFeedback(searchFeedback, "Failed to load terminals.");
     }
   }
 
@@ -66,12 +72,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
   searchForm.addEventListener("submit", async (event) => {
     event.preventDefault();
+    setFeedback(searchFeedback, "");
     const originId = originSelect.value;
     const destinationId = destinationSelect.value;
     const date = document.getElementById("date").value;
 
     if (originId === destinationId) {
-      alert("Origin and destination cannot be the same.");
+      setFeedback(searchFeedback, "Origin and destination cannot be the same.");
       return;
     }
 
@@ -106,34 +113,37 @@ document.addEventListener("DOMContentLoaded", () => {
       card.className = "trip-card";
       card.innerHTML = `
         <div class="trip-card-top">
-          <span class="bus-pill">${trip.busType}</span>
+          <span class="bus-pill">${escapeHtml(trip.busType)}</span>
           <strong>${formatCurrency(trip.price)}</strong>
         </div>
-        <h3>${escapeHtml(trip.route.origin.name)} <i class="ri-arrow-right-line"></i> ${escapeHtml(
+        <h3>${escapeHtml(trip.route.origin.name)} <i class="ri-arrow-right-line" aria-hidden="true"></i> ${escapeHtml(
         trip.route.destination.name
       )}</h3>
         <div class="trip-meta">
-          <span><i class="ri-time-line"></i> ${formatTime(departure)}</span>
-          <span><i class="ri-route-line"></i> ${duration}h</span>
-          <span><i class="ri-armchair-fill"></i> ${trip.seatsAvailable}/${trip.capacity}</span>
+          <span><i class="ri-time-line" aria-hidden="true"></i> ${formatTime(departure)}</span>
+          <span><i class="ri-route-line" aria-hidden="true"></i> ${duration}h</span>
+          <span><i class="ri-armchair-fill" aria-hidden="true"></i> ${trip.seatsAvailable}/${trip.capacity}</span>
         </div>
         <button class="btn secondary full" type="button">Select Seats</button>
       `;
-      card.querySelector("button").addEventListener("click", () => openBookingModal(trip));
+      const selectButton = card.querySelector("button");
+      selectButton.addEventListener("click", () => openBookingModal(trip, selectButton));
       resultsContainer.appendChild(card);
     }
 
     resultsSection.scrollIntoView({ behavior: "smooth" });
   }
 
-  async function openBookingModal(trip) {
+  async function openBookingModal(trip, triggerButton = null) {
     if (!currentUser) {
       location.href = "login.html";
       return;
     }
 
+    lastTriggerButton = triggerButton;
     currentTrip = trip;
     selectedSeats = [];
+    setFeedback(modalFeedback, "");
     document.getElementById("modal-trip-id").value = trip.id;
     document.getElementById("modal-route").textContent = `${trip.route.origin.name} to ${trip.route.destination.name}`;
     document.getElementById("modal-details").textContent = `${formatTime(
@@ -143,6 +153,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("contact-email").value = currentUser.email || "";
     document.getElementById("contact-phone").value = currentUser.phone || "";
     bookingModal.classList.remove("hidden");
+    document.querySelector(".close-modal").focus();
     await renderSeatMap(trip.id);
     updateTotal();
   }
@@ -150,38 +161,47 @@ document.addEventListener("DOMContentLoaded", () => {
   async function renderSeatMap(tripId) {
     seatMap.innerHTML = "";
     seatHelp.textContent = "Loading seat map...";
-    const res = await fetch(`/api/trips/${tripId}/seats`);
-    const data = await res.json();
-    if (!res.ok) {
-      seatHelp.textContent = data.error || "Unable to load seats";
-      return;
-    }
+    try {
+      const res = await fetch(`/api/trips/${tripId}/seats`);
+      const data = await res.json();
+      if (!res.ok) {
+        seatHelp.textContent = data.error || "Unable to load seats";
+        return;
+      }
 
-    const taken = new Set(data.takenSeats);
-    for (let seat = 1; seat <= data.capacity; seat += 1) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "seat";
-      button.textContent = seat;
-      button.disabled = taken.has(seat);
-      if (button.disabled) button.classList.add("taken");
-      button.addEventListener("click", () => toggleSeat(button, seat));
-      seatMap.appendChild(button);
+      const taken = new Set(data.takenSeats);
+      for (let seat = 1; seat <= data.capacity; seat += 1) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "seat";
+        button.textContent = seat;
+        button.disabled = taken.has(seat);
+        button.setAttribute("aria-label", `Seat ${seat}${button.disabled ? " (taken)" : ""}`);
+        button.setAttribute("aria-pressed", "false");
+        if (button.disabled) button.classList.add("taken");
+        button.addEventListener("click", () => toggleSeat(button, seat));
+        seatMap.appendChild(button);
+      }
+      seatHelp.textContent = `${data.seatsAvailable} seats available`;
+    } catch {
+      seatHelp.textContent = "Unable to load seats";
     }
-    seatHelp.textContent = `${data.seatsAvailable} seats available`;
   }
 
   function toggleSeat(button, seat) {
+    setFeedback(modalFeedback, "");
     if (selectedSeats.includes(seat)) {
       selectedSeats = selectedSeats.filter((item) => item !== seat);
       button.classList.remove("selected");
+      button.setAttribute("aria-pressed", "false");
     } else {
       if (selectedSeats.length >= 10) {
-        alert("You can reserve up to 10 seats per booking.");
+        setFeedback(modalFeedback, "You can reserve up to 10 seats per booking.");
         return;
       }
       selectedSeats.push(seat);
       button.classList.add("selected");
+      button.setAttribute("aria-pressed", "true");
     }
     selectedSeats.sort((a, b) => a - b);
     updateTotal();
@@ -198,15 +218,25 @@ document.addEventListener("DOMContentLoaded", () => {
   bookingModal.addEventListener("click", (event) => {
     if (event.target === bookingModal) closeModal();
   });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !bookingModal.classList.contains("hidden")) {
+      closeModal();
+    }
+  });
 
   function closeModal() {
     bookingModal.classList.add("hidden");
+    if (lastTriggerButton) {
+      lastTriggerButton.focus();
+      lastTriggerButton = null;
+    }
   }
 
   bookingForm.addEventListener("submit", async (event) => {
     event.preventDefault();
+    setFeedback(modalFeedback, "");
     if (selectedSeats.length === 0) {
-      alert("Select at least one seat.");
+      setFeedback(modalFeedback, "Select at least one seat.");
       return;
     }
 
@@ -231,7 +261,7 @@ document.addEventListener("DOMContentLoaded", () => {
       renderBookingResult(booking, true);
       lookupResult.scrollIntoView({ behavior: "smooth" });
     } catch (error) {
-      alert(error.message);
+      setFeedback(modalFeedback, error.message);
     }
   });
 
@@ -261,15 +291,15 @@ document.addEventListener("DOMContentLoaded", () => {
       <article class="ticket-card">
         <div>
           <p class="eyebrow">${isNew ? "Reservation confirmed" : "Booking details"}</p>
-          <h2>${booking.reference}</h2>
-          <p class="muted">${booking.tripDetails.route} • ${booking.tripDetails.date} ${booking.tripDetails.time}</p>
+          <h2>${escapeHtml(booking.reference)}</h2>
+          <p class="muted">${escapeHtml(booking.tripDetails.route)} • ${escapeHtml(booking.tripDetails.date)} ${escapeHtml(booking.tripDetails.time)}</p>
         </div>
         <div class="ticket-grid">
           <div><span>Passenger</span><strong>${escapeHtml(booking.passengerName)}</strong></div>
-          <div><span>Seats</span><strong>${booking.seatNumbers.join(", ")}</strong></div>
+          <div><span>Seats</span><strong>${escapeHtml(booking.seatNumbers.join(", "))}</strong></div>
           <div><span>Total</span><strong>${formatCurrency(booking.totalPrice)}</strong></div>
-          <div><span>Status</span><strong>${booking.status}</strong></div>
-          <div><span>Payment</span><strong>${booking.paymentStatus}</strong></div>
+          <div><span>Status</span><strong>${escapeHtml(booking.status)}</strong></div>
+          <div><span>Payment</span><strong>${escapeHtml(booking.paymentStatus)}</strong></div>
         </div>
         ${booking.ticketQrData ? `<img class="ticket-qr" src="${booking.ticketQrData}" alt="Ticket QR code" />` : ""}
         <div class="ticket-actions">
@@ -285,28 +315,38 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const cancelButton = document.getElementById("cancel-booking");
     if (cancelButton) {
-      cancelButton.addEventListener("click", () => cancelBooking(booking.reference));
+      const bookingContact = booking.contactEmail || booking.contactPhone || "";
+      cancelButton.addEventListener("click", () => cancelBooking(booking.reference, bookingContact));
     }
   }
 
-  async function cancelBooking(reference) {
+  async function cancelBooking(reference, fallbackContact = "") {
     const contact =
       document.getElementById("lookup-contact").value ||
+      fallbackContact ||
       document.getElementById("contact-email").value ||
       document.getElementById("contact-phone").value;
     if (!confirm("Cancel this booking and release the selected seats?")) return;
 
-    const res = await fetch(`/api/bookings/${encodeURIComponent(reference)}/cancel`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contact }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      alert(data.error || "Cancellation failed");
-      return;
+    try {
+      const res = await fetch(`/api/bookings/${encodeURIComponent(reference)}/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contact }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Cancellation failed");
+      renderBookingResult(data);
+    } catch (error) {
+      lookupResult.classList.remove("hidden");
+      showInline(lookupResult, error.message);
     }
-    renderBookingResult(data);
+  }
+
+  function setFeedback(element, message) {
+    if (!element) return;
+    element.textContent = message;
+    element.classList.toggle("hidden", !message);
   }
 
   function showInline(container, message) {

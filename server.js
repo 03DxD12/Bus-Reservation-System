@@ -28,7 +28,13 @@ function parseCookies(req) {
       .filter(Boolean)
       .map((part) => {
         const index = part.indexOf("=");
-        return [part.slice(0, index), decodeURIComponent(part.slice(index + 1))];
+        if (index === -1) return [part, ""];
+        const rawValue = part.slice(index + 1);
+        try {
+          return [part.slice(0, index), decodeURIComponent(rawValue)];
+        } catch {
+          return [part.slice(0, index), rawValue];
+        }
       })
   );
 }
@@ -224,17 +230,25 @@ app.post("/api/auth/register", async (req, res) => {
 });
 
 app.post("/api/auth/login", async (req, res) => {
-  const username = String(req.body.username || "").trim();
-  const password = String(req.body.password || "");
-  const user = await prisma.user.findUnique({ where: { username } });
+  try {
+    const username = String(req.body.username || "").trim();
+    const password = String(req.body.password || "");
+    if (!username || !password) {
+      return res.status(400).json({ error: "Username and password are required" });
+    }
+    const user = await prisma.user.findUnique({ where: { username } });
 
-  if (!user || !(await bcrypt.compare(password, user.password))) {
-    return res.status(401).json({ error: "Invalid username or password" });
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+      return res.status(401).json({ error: "Invalid username or password" });
+    }
+
+    const token = signToken(user);
+    setAuthCookie(res, token);
+    res.json({ user: publicUser(user), token });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Unable to sign in right now" });
   }
-
-  const token = signToken(user);
-  setAuthCookie(res, token);
-  res.json({ user: publicUser(user), token });
 });
 
 app.post("/api/auth/logout", (req, res) => {
@@ -294,23 +308,31 @@ app.get("/api/trips", async (req, res) => {
 });
 
 app.get("/api/trips/:id/seats", async (req, res) => {
-  const tripId = Number.parseInt(req.params.id, 10);
-  const trip = await prisma.trip.findUnique({ where: { id: tripId } });
-  if (!trip) {
-    return res.status(404).json({ error: "Trip not found" });
+  try {
+    const tripId = Number.parseInt(req.params.id, 10);
+    if (!Number.isInteger(tripId) || tripId <= 0) {
+      return res.status(400).json({ error: "Invalid trip ID" });
+    }
+    const trip = await prisma.trip.findUnique({ where: { id: tripId } });
+    if (!trip) {
+      return res.status(404).json({ error: "Trip not found" });
+    }
+
+    const takenSeats = await prisma.bookingSeat.findMany({
+      where: { tripId },
+      orderBy: { seatNumber: "asc" },
+      select: { seatNumber: true },
+    });
+
+    res.json({
+      capacity: trip.capacity,
+      seatsAvailable: trip.seatsAvailable,
+      takenSeats: takenSeats.map((seat) => seat.seatNumber),
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to load seat map" });
   }
-
-  const takenSeats = await prisma.bookingSeat.findMany({
-    where: { tripId },
-    orderBy: { seatNumber: "asc" },
-    select: { seatNumber: true },
-  });
-
-  res.json({
-    capacity: trip.capacity,
-    seatsAvailable: trip.seatsAvailable,
-    takenSeats: takenSeats.map((seat) => seat.seatNumber),
-  });
 });
 
 app.get("/api/terminals", async (req, res) => {
@@ -369,26 +391,31 @@ app.get("/api/bookings", authOptional, requireAdmin, async (req, res) => {
 });
 
 app.get("/api/admin/stats", authOptional, requireAdmin, async (req, res) => {
-  const bookings = await prisma.booking.findMany({
-    where: { status: { not: "CANCELLED" } },
-    include: bookingInclude(),
-  });
-  const trips = await prisma.trip.count({ where: { status: "SCHEDULED" } });
+  try {
+    const bookings = await prisma.booking.findMany({
+      where: { status: { not: "CANCELLED" } },
+      include: bookingInclude(),
+    });
+    const trips = await prisma.trip.count({ where: { status: "SCHEDULED" } });
 
-  const byRoute = {};
-  for (const booking of bookings) {
-    const route = `${booking.trip.route.origin.name} -> ${booking.trip.route.destination.name}`;
-    byRoute[route] ||= { route, bookings: 0, revenue: 0 };
-    byRoute[route].bookings += 1;
-    byRoute[route].revenue += booking.totalPrice;
+    const byRoute = {};
+    for (const booking of bookings) {
+      const route = `${booking.trip.route.origin.name} -> ${booking.trip.route.destination.name}`;
+      byRoute[route] ||= { route, bookings: 0, revenue: 0 };
+      byRoute[route].bookings += 1;
+      byRoute[route].revenue += booking.totalPrice;
+    }
+
+    res.json({
+      totalBookings: bookings.length,
+      activeTrips: trips,
+      revenue: bookings.reduce((sum, booking) => sum + booking.totalPrice, 0),
+      byRoute: Object.values(byRoute),
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to load dashboard stats" });
   }
-
-  res.json({
-    totalBookings: bookings.length,
-    activeTrips: trips,
-    revenue: bookings.reduce((sum, booking) => sum + booking.totalPrice, 0),
-    byRoute: Object.values(byRoute),
-  });
 });
 
 app.post("/api/bookings", authOptional, requireAuth, async (req, res) => {
@@ -409,7 +436,9 @@ app.post("/api/bookings", authOptional, requireAuth, async (req, res) => {
       return res.status(400).json({ error: "Email or phone is required for lookup" });
     }
 
-    const uniqueSeats = [...new Set(selectedSeats)].sort((a, b) => a - b);
+    const uniqueSeats = [...new Set(selectedSeats)]
+      .filter((seat) => Number.isInteger(seat) && seat > 0)
+      .sort((a, b) => a - b);
     if (uniqueSeats.length !== selectedSeats.length || uniqueSeats.length > 10) {
       return res.status(400).json({ error: "Choose 1 to 10 unique seats" });
     }
@@ -481,23 +510,31 @@ app.post("/api/bookings", authOptional, requireAuth, async (req, res) => {
 });
 
 app.post("/api/bookings/lookup", async (req, res) => {
-  const reference = String(req.body.reference || "").trim().toUpperCase();
-  const contact = String(req.body.contact || "").trim().toLowerCase();
+  try {
+    const reference = String(req.body.reference || "").trim().toUpperCase();
+    const contact = String(req.body.contact || "").trim().toLowerCase();
 
-  const booking = await prisma.booking.findUnique({
-    where: { reference },
-    include: bookingInclude(),
-  });
+    if (!reference || !contact) {
+      return res.status(400).json({ error: "Booking reference and contact are required" });
+    }
 
-  if (
-    !booking ||
-    !contact ||
-    (![booking.contactEmail?.toLowerCase(), booking.contactPhone].includes(contact))
-  ) {
-    return res.status(404).json({ error: "Booking not found" });
+    const booking = await prisma.booking.findUnique({
+      where: { reference },
+      include: bookingInclude(),
+    });
+
+    if (
+      !booking ||
+      ![booking.contactEmail?.toLowerCase(), booking.contactPhone?.toLowerCase()].includes(contact)
+    ) {
+      return res.status(404).json({ error: "Booking not found" });
+    }
+
+    res.json(formatBooking(booking));
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to look up booking" });
   }
-
-  res.json(formatBooking(booking));
 });
 
 app.post("/api/bookings/:reference/cancel", async (req, res) => {
@@ -513,7 +550,7 @@ app.post("/api/bookings/:reference/cancel", async (req, res) => {
       if (
         !booking ||
         !contact ||
-        (![booking.contactEmail?.toLowerCase(), booking.contactPhone].includes(contact))
+        (![booking.contactEmail?.toLowerCase(), booking.contactPhone?.toLowerCase()].includes(contact))
       ) {
         throw new Error("Booking not found");
       }
